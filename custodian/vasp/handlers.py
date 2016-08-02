@@ -955,6 +955,7 @@ class NonlocalPotentialHandler(ErrorHandler):
                 this only if it is different from the default (unlikely).
         """
         self.output_filename = output_filename
+        self.encut_red = encut_red
     
     def check(self):
         incar = Incar.from_file("INCAR")
@@ -979,7 +980,7 @@ class NonlocalPotentialHandler(ErrorHandler):
         actions = []
         vi = VaspInput.from_directory(".")
         if "psmaxn" in self.errors:
-            new_encut = vi['INCAR']['ENCUT'] - encut_red
+            new_encut = vi['INCAR']['ENCUT'] - self.encut_red
             actions.extend([{"dict": "INCAR",
                              "action": {"_set": {"ENCUT": new_encut}}}])
         VaspModder(vi=vi).apply_actions(actions)
