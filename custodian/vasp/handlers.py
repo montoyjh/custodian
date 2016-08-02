@@ -934,3 +934,53 @@ class PositiveEnergyErrorHandler(ErrorHandler):
         #Unfixable error. Just return None for actions.
         else:
             return {"errors": ["Positive energy"], "actions": None}
+
+class NonlocalPotentialHandler(ErrorHandler):
+    """
+    Checks to see if run has problem with the non-local
+    potential being too small.  Error may not be fatal, so
+    only checks at the end.  Reduces cutoff.  Generally
+    cutoff should be kept consistent between runs, so use
+    with caution.
+    """
+    is_monitor = False
+    error_msgs = {"psmaxn": ["PSMAXN for non-local potential too small"]}
+
+    def __init__(self, output_filename="vasp.out", encut_red=50):
+        """
+        Initializes the handler with the output file to check.
+
+        Args:
+            output_filename (str): This is the stdout (vasp.out) file. Change
+                this only if it is different from the default (unlikely).
+        """
+        self.output_filename = output_filename
+    
+    def check(self):
+        incar = Incar.from_file("INCAR")
+        self.errors = set()
+        with open(self.output_filename, "r") as f:
+            for line in f:
+                l = line.strip()
+                for err, msgs in AliasingErrorHandler.error_msgs.items():
+                    for msg in msgs:
+                        if l.find(msg) != -1:
+                            # this checks if we want to run a charged
+                            # computation (e.g., defects) if yes we don't
+                            # want to kill it because there is a change in e-
+                            # density (brmix error)
+                            if err == "brmix" and 'NELECT' in incar:
+                                continue
+                            self.errors.add(err)
+        return len(self.errors) > 0
+
+    def correct(self):
+        backup(VASP_BACKUP_FILES | {self.output_filename})
+        actions = []
+        vi = VaspInput.from_directory(".")
+        if "psmaxn" in self.errors:
+            new_encut = vi['INCAR']['ENCUT'] - encut_red
+            actions.extend([{"dict": "INCAR",
+                             "action": {"_set": {"ENCUT": new_encut}}}])
+        VaspModder(vi=vi).apply_actions(actions)
+        return {"errors": list(self.errors), "actions": actions}
