@@ -23,7 +23,8 @@ import datetime
 from custodian.vasp.handlers import VaspErrorHandler, \
     UnconvergedErrorHandler, MeshSymmetryErrorHandler, WalltimeHandler, \
     MaxForceErrorHandler, PositiveEnergyErrorHandler, PotimErrorHandler, \
-    FrozenJobErrorHandler, AliasingErrorHandler, StdErrHandler, LrfCommutatorHandler
+    FrozenJobErrorHandler, AliasingErrorHandler, StdErrHandler, LrfCommutatorHandler, \
+    DriftErrorHandler
 from pymatgen.io.vasp import Incar, Poscar, Structure, Kpoints, VaspInput
 
 
@@ -223,6 +224,23 @@ class VaspErrorHandlerTest(unittest.TestCase):
         i = Incar.from_file("INCAR")
         self.assertEqual(i["ISMEAR"], 0)
 
+    def test_rhosyg(self):
+        h = VaspErrorHandler("vasp.rhosyg")
+        self.assertEqual(h.check(), True)
+        self.assertEqual(h.correct()["errors"], ["rhosyg"])
+        i = Incar.from_file("INCAR")
+        self.assertEqual(i["SYMPREC"], 1e-4)
+        self.assertEqual(h.correct()["errors"], ["rhosyg"])
+        i = Incar.from_file("INCAR")
+        self.assertEqual(i["ISYM"], 0)
+
+    def test_posmap(self):
+        h = VaspErrorHandler("vasp.posmap")
+        self.assertEqual(h.check(), True)
+        self.assertEqual(h.correct()["errors"], ["posmap"])
+        i = Incar.from_file("INCAR")
+        self.assertEqual(i["SYMPREC"], 1e-6)
+
     def tearDown(self):
         os.chdir(test_dir)
         shutil.move("INCAR.orig", "INCAR")
@@ -321,6 +339,14 @@ class UnconvergedErrorHandlerTest(unittest.TestCase):
         self.assertTrue(h.check())
         d = h.correct()
         self.assertEqual(d["errors"], ['Unconverged'])
+        os.remove("vasprun.xml")
+
+    def test_check_correct_electronic_repeat(self):
+        shutil.copy("vasprun.xml.electronic2", "vasprun.xml")
+        h = UnconvergedErrorHandler()
+        self.assertTrue(h.check())
+        d = h.correct()
+        self.assertEqual(d, {"errors": ["Unconverged"], "actions": None})
         os.remove("vasprun.xml")
 
     def test_check_correct_ionic(self):
@@ -651,6 +677,60 @@ class OutOfMemoryHandlerTest(unittest.TestCase):
         shutil.move("INCAR.orig", "INCAR")
         clean_dir()
         os.chdir(cwd)
+
+class DriftErrorHandlerTest(unittest.TestCase):
+
+    def setUp(self):
+        os.chdir(os.path.abspath(test_dir))
+        os.chdir("drift")
+
+
+    def test_check(self):
+
+        shutil.copy("INCAR", "INCAR.orig")
+
+        h = DriftErrorHandler(max_drift=0.05, to_average=11)
+        self.assertFalse(h.check())
+
+        h = DriftErrorHandler(max_drift=0.05)
+        self.assertFalse(h.check())
+
+        h = DriftErrorHandler(max_drift=0.0001)
+        self.assertTrue(h.check())
+
+        incar = Incar.from_file("INCAR")
+        incar["EDIFFG"] = -0.01
+        incar.write_file("INCAR")
+
+        h = DriftErrorHandler()
+        h.check()
+        self.assertEqual(h.max_drift,0.01)
+
+        clean_dir()
+        shutil.move("INCAR.orig", "INCAR")
+
+    def test_correct(self):
+
+        shutil.copy("INCAR", "INCAR.orig")
+
+        h = DriftErrorHandler(max_drift=0.0001,enaug_multiply=2)
+        h.check()
+        d = h.correct()
+        incar = Incar.from_file("INCAR")
+        self.assertTrue(incar.get("ADDGRID",False))
+
+        d = h.correct()
+        incar = Incar.from_file("INCAR")
+        self.assertEqual(incar.get("PREC"),"High")
+        self.assertEqual(incar.get("ENAUG",0),incar.get("ENCUT",2)*2)
+
+        clean_dir()
+        shutil.move("INCAR.orig", "INCAR")
+
+    def tearDown(self):
+        clean_dir()
+        os.chdir(cwd)
+
 
 
 if __name__ == "__main__":
