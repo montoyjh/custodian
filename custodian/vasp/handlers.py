@@ -86,7 +86,7 @@ class VaspErrorHandler(ErrorHandler):
             "EDWAV: internal error, the gradient is not orthogonal"],
         "nicht_konv": ["ERROR: SBESSELITER : nicht konvergent"],
         "zheev": ["ERROR EDDIAG: Call to routine ZHEEV failed!"],
-        "rotdia": ["ERROR ROTDIA: Call to routine ZHEEV failed"]
+        "rotdia": ["ERROR ROTDIA: Call to routine ZHEEV failed"],
         "elf_kpar": ["ELF: KPAR>1 not implemented"],
         "elf_ncl": ["WARNING: ELF not implemented for non collinear case"],
         "rhosyg": ["RHOSYG internal error"],
@@ -382,7 +382,6 @@ class VaspErrorHandler(ErrorHandler):
         if "posmap" in self.errors:
             actions.append({"dict": "INCAR",
                             "action": {"_set": {"SYMPREC": 1e-6}}})
->>>>>>> origin/master
 
         VaspModder(vi=vi).apply_actions(actions)
         return {"errors": list(self.errors), "actions": actions}
@@ -799,8 +798,11 @@ class MaxForceErrorHandler(ErrorHandler):
     def check(self):
         try:
             v = Vasprun(self.output_filename)
-            max_force = max([np.linalg.norm(a) for a
-                             in v.ionic_steps[-1]["forces"]])
+            forces = np.array(v.ionic_steps[-1]["forces"])
+            sdyn = v.final_structure.site_properties.get("selective_dynamics")
+            if sdyn:
+                forces[np.logical_not(sdyn)] == 0
+            max_force = np.max(np.linalg.norm(forces, axis=1))            
             if max_force > self.max_force_threshold and v.converged is True:
                 return True
         except:
