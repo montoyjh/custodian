@@ -89,7 +89,8 @@ class VaspErrorHandler(ErrorHandler):
         "edddav": ["Error EDDDAV: Call to ZHEGV failed"],
         "grad_not_orth": ["EDWAV: internal error, the gradient is not orthogonal"],
         "nicht_konv": ["ERROR: SBESSELITER : nicht konvergent"],
-        "zheev": ["ERROR EDDIAG: Call to routine ZHEEV failed!"]
+        "zheev": ["ERROR EDDIAG: Call to routine ZHEEV failed!"],
+        "rotdia": ["ERROR ROTDIA: Call to routine ZHEEV failed"]
     }
 
     def __init__(self, output_filename="vasp.out", natoms_large_cell=100):
@@ -295,6 +296,9 @@ class VaspErrorHandler(ErrorHandler):
             potim = float(vi["INCAR"].get("POTIM", 0.5)) + 0.1
             actions.append({"dict": "INCAR",
                             "action": {"_set": {"POTIM": potim}}})
+            actions.append({"file": "CONTCAR",
+                            "action": {"_file_copy": {"dest": "POSCAR"}}})
+
 
         if "zbrent" in self.errors:
             actions.append({"dict": "INCAR",
@@ -352,6 +356,11 @@ class VaspErrorHandler(ErrorHandler):
             if vi["INCAR"].get("ALGO", "Fast").lower() != "exact":
                 actions.append({"dict": "INCAR",
                                 "action": {"_set": {"ALGO": "Exact"}}})
+        
+        if "rotdia" in self.errors:
+            if not vi["INCAR"].get("LSUBROT", False):
+                actions.append({"dict": "INCAR",
+                                "action": {"_set": {"LSUBROT": True}}})
 
         VaspModder(vi=vi).apply_actions(actions)
         return {"errors": list(self.errors), "actions": actions}
