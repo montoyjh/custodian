@@ -861,10 +861,10 @@ class NonConvergingErrorHandler(ErrorHandler):
         amin = vi["INCAR"].get("AMIN", 0.1)
         actions = []
         if self.change_algo:
-            if algo == "Fast":
+            if algo != "All":
                 backup(VASP_BACKUP_FILES)
                 actions.append({"dict": "INCAR",
-                                "action": {"_set": {"ALGO": "Normal"}}})
+                                "action": {"_set": {"ALGO": "All", "LSUBROT": False, "TIME": 0.2}}})
 
             elif amix > 0.1 and bmix > 0.01:
                 #try linear mixing
